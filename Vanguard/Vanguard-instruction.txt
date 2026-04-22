@@ -1,0 +1,81 @@
+Product URL	
+Image URL	
+Product Name	
+SKU	
+Description	
+Weight	
+Width	
+Depth 
+Diameter	
+Height
+lets make a new python scraping bot that I will run in my pc.
+the website is https://www.vanguardfurniture.com/
+you know my other bots are using selenium and chromedriver
+my chrome driver path is "C:/chromedriver.exe"
+
+the bot will have 2 steps
+
+1st step - list page - collect all available data and save in a excel file
+2nd step - details page - get the details page link from the 1st step excel file and update the excel file with new data
+
+the list page needs to scroll down and load data and images, it is using lazyload for images, I need all available data from the 1st step, then we will work on 2nd step
+
+do you understand?
+Now I am giving you the 1st step instruction
+
+website 1st list pages - https://www.vanguardfurniture.com/styles?Room=BR&ProdType=035
+2nd page-https://www.vanguardfurniture.com/styles?Room=BR&ProdType=035&PageIndex=1
+
+
+
+here you will find a <ol class="products list items product-items"> > li these are our list data
+
+this is a sample html code
+
+<div class="search-item">
+                <a href="/Products/ProductDetails/HC166-10">
+                    <div><img src="/prod-images/HC166-11_511573_small.jpg" alt="Artisan Single Drawer Nightstand - Ash"></div>
+                    <div class="search-item-sku">HC166-10</div>
+                    <div class="search-item-name">Artisan Single Drawer Nightstand - Ash</div>
+                </a>
+            </div>
+
+create an excel file with these columns - Product URL, Image URL, Product Name, SKU
+
+
+
+description:<div class="Romance">
+					Bold yet refined, the Ashby Nightstand makes an ideal addition to a designer bedroom. Balancing a classic beveled frame with contemporary elements, its signature aesthetic can be customized with your choice of our Make It Yours face options and hardware choices. Part of our Make It Yours Bedroom collection, Ashby is crafted of Beech veneers. This nightstand offers three drawers with generous storage for keeping clutter tucked out of sight. 
+				</div>
+div.class="Romance" theke nibe
+first e DIMENSIONS &amp; FEATURES e jabe :<div class="SectionHeader CCP_Header" panel-name="Dimensions">			
+					DIMENSIONS &amp; FEATURES
+					<i class="CCP_Icon fa-sm fa fa-minus" aria-hidden="true"></i>
+				</div> sekhan theke 
+<div id="ctl00_ctl00_ChildBodyContent_ContentPlaceHolderFullWidth_divDimFeatures">
+				<div class="SectionDivider"></div>
+
+				<div class="SectionHeader CCP_Header" panel-name="Dimensions">			
+					DIMENSIONS &amp; FEATURES
+					<i class="CCP_Icon fa-sm fa fa-minus" aria-hidden="true"></i>
+				</div>
+				<div class="CCP_Body" panel-name="Dimensions" panel-default="0" style="">
+					<div id="ctl00_ctl00_ChildBodyContent_ContentPlaceHolderFullWidth_divDimenions" class="DetailText">
+						<div class="SubHeader">Dimensions (inches)</div>
+						<div class="SubText">
+							<div class="DimensionsGrid">
+								<div>Overall: W 31.75 D 20 H 30 </div>
+							</div>
+							<div class="SubHeader">Dimensions (inches)</div>
+						</div>
+					</div>
+					<div id="ctl00_ctl00_ChildBodyContent_ContentPlaceHolderFullWidth_divFeatures" class="DetailText">
+						<div class="SubHeader">Standard Features</div>
+						<div>Three Drawers, All MIY Drawer Fronts &amp; Hardware Options Available</div><div>Wood Species: Beech Solids and Veneers / Maple Solids</div>
+					</div>
+				</div>
+			</div>
+<div class="DimensionsGrid"> ei theke height width depth scrap korbe
+<div id="divAsShown">CC252. Finish: Linen. Grass Cloth Face, Small Round Wood Pulls/One Centered on Each Drawer.</div>
+<div id="divAsShown">CC253. Finish: Linen. Grass Cloth Face, Small Round Wood Pulls/One Centered on Each Drawer.</div>
+prottek ta link e giye divAsShown id ta k dhore data scrap korbe

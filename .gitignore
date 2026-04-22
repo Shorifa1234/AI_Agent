@@ -1,0 +1,25 @@
+# Excel data files (generated output)
+*.xlsx
+*.xls
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Selenium / debug
+*_screenshot.png
+*_page.html
+debug_*.png
+timeout_*.png
+
+# Tearsheet downloads
+tearsheets/
+downloads_temp/
+
+# Temp save files
+*_tmp.xlsx
+*_saved.xlsx
+
+# Environment
+.env
