@@ -43,63 +43,84 @@ OUTPUT_COLS = [
     "Description",
     "Width", "Depth", "Height", "Diameter", "Extension", "Canopy",
     "Finish", "Collection", "Color", "Style", "Product Type",
+    "Total Bulbs", "Wattage", "Dimmable",
     "Price",
     "All SKUs",
 ]
 # ------------------------------------------------------------------------------
 
 
-def extract_dimensions(html: str) -> dict:
-    # Match patterns like:  Width: 13.75"  or  Height: 9.25"
-    dims = {}
-    for field in DIM_FIELDS:
-        m = re.search(
-            rf'{field}\s*:\s*([\d.]+)\s*[\x22\x27″′]',
-            html, re.I
-        )
-        if m:
-            dims[field] = m.group(1)
-    return dims
+# Dimension patterns: (regex label on page, output column name)
+# More specific patterns first so they take priority
+DIM_PATTERNS = [
+    (r"Product\s+Width",              "Width"),
+    (r"Product\s+Height",             "Height"),
+    (r"Product\s+Depth",              "Depth"),
+    (r"Product\s+Diameter",           "Diameter"),
+    (r"Maximum\s+Adjustable\s+Height","Extension"),
+    (r"Width",                        "Width"),
+    (r"Height",                       "Height"),
+    (r"Depth",                        "Depth"),
+    (r"Diameter",                     "Diameter"),
+    (r"Extension",                    "Extension"),
+]
 
 
-def extract_page_attrs(html: str) -> dict:
-    # Extract Collection, Color, Finish from .product-overview-attrs section
-    # and Price from common Shopify price selectors
-    attrs = {}
+def extract_detail_data(html: str) -> dict:
+    # Parse all useful fields from the crystorama.com product detail page
+    data = {}
     soup = BeautifulSoup(html, "html.parser")
 
-    attr_container = soup.find(class_="product-overview-attrs")
-    if attr_container:
-        for col in attr_container.find_all("div", recursive=False):
-            h3 = col.find("h3")
-            a  = col.find("a")
-            if h3 and a:
-                label = h3.get_text(strip=True)
-                value = a.get_text(strip=True)
-                if label in ("Collection", "Color", "Finish"):
-                    attrs[label] = value
+    # Collect text from ALL tab-content sections and the details accordion
+    parts = []
+    for tc in soup.select(".tab-content"):
+        parts.append(tc.get_text(" ", strip=True))
+    for sel in (".enable-lumens-details", ".disable-lumens-details"):
+        el = soup.select_one(sel)
+        if el:
+            parts.append(el.get_text(" ", strip=True))
+    text = " ".join(parts)
 
-    if not attrs.get("Price"):
-        for sel in (".price", "[data-product-price]", ".product-price", ".price__current"):
-            el = soup.select_one(sel)
-            if el:
-                raw = el.get_text(strip=True).split("–")[0].split("-")[0]
-                clean = re.sub(r"[^\d.]", "", raw)
-                if clean:
-                    attrs["Price"] = clean
-                    break
+    # Dimensions (numeric inch values)
+    for pattern, col in DIM_PATTERNS:
+        if col in data:
+            continue
+        m = re.search(rf"{pattern}\s*:\s*([\d.]+)", text, re.I)
+        if m:
+            data[col] = m.group(1)
 
-    return attrs
+    # Canopy/Backplate: 5"W x 0.75"H  ->  first number is canopy width
+    m = re.search(r"Canopy[^\w].*?:\s*([\d.]+)", text, re.I)
+    if m:
+        data["Canopy"] = m.group(1)
+
+    # Finish (text value, not a number)
+    m = re.search(r"Finish\s*:\s*([A-Za-z /&,]+?)(?:\s+(?:Total|Wattage|Product|Max|Dimmable|Model)\b|$)", text, re.I)
+    if m:
+        finish = m.group(1).strip().rstrip(",")
+        if finish:
+            data["Finish"] = finish
+
+    # Extra useful fields
+    m = re.search(r"Total\s+Bulbs\s*:\s*(\d+)", text, re.I)
+    if m:
+        data["Total Bulbs"] = m.group(1)
+    m = re.search(r"(?<!\w)Wattage\s*:\s*([\d.]+)\s*W", text, re.I)
+    if m:
+        data["Wattage"] = m.group(1) + "W"
+    m = re.search(r"Dimmable\s*:\s*(Yes|No)", text, re.I)
+    if m:
+        data["Dimmable"] = m.group(1)
+
+    return data
 
 
 def fetch_detail(url: str) -> dict:
-    # Fetch a product page and return dimensions + page attributes
+    # Fetch a product page and return all extracted fields
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
-        data = extract_dimensions(resp.text)
-        data.update(extract_page_attrs(resp.text))
-        return data
+        return extract_detail_data(resp.text)
     except Exception as e:
         print(f"    [WARN] fetch_detail failed ({url}): {e}")
         return {}
