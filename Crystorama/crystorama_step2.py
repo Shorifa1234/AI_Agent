@@ -42,21 +42,22 @@ OUTPUT_COLS = [
     "Product Name", "SKU", "Base SKU", "Product Family Id",
     "Description",
     "Width", "Depth", "Height", "Diameter", "Extension", "Canopy",
-    "Finish", "Style", "Product Type",
+    "Finish", "Collection", "Color", "Style", "Product Type",
+    "Price",
     "All SKUs",
 ]
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def extract_dimensions(html: str) -> dict[str, str]:
-    """
+    “””
     Parse dimension fields from product detail page HTML.
-    Looks for patterns like  'Width: 13.75"'  or  'Height: 9.25"'
-    """
+    Looks for patterns like  'Width: 13.75”'  or  'Height: 9.25”'
+    “””
     dims: dict[str, str] = {}
     for field in DIM_FIELDS:
         m = re.search(
-            rf'{field}\s*:\s*([\d.]+)\s*["“”″′\']',
+            rf'{field}\s*:\s*([\d.]+)\s*[“””″′\']',
             html, re.I
         )
         if m:
@@ -64,14 +65,52 @@ def extract_dimensions(html: str) -> dict[str, str]:
     return dims
 
 
+def extract_page_attrs(html: str) -> dict[str, str]:
+    “””
+    Extract Collection, Color (and override Finish) from product detail page.
+    Looks for <h3>Label</h3><a>Value</a> pairs in .product-overview-attrs,
+    and also the price from .price or [data-product-price].
+    “””
+    attrs: dict[str, str] = {}
+    soup = BeautifulSoup(html, “html.parser”)
+
+    # Attribute pairs: Collection, Finish, Color, etc.
+    attr_container = soup.find(class_=”product-overview-attrs”)
+    if attr_container:
+        for col in attr_container.find_all(“div”, recursive=False):
+            h3 = col.find(“h3”)
+            a  = col.find(“a”)
+            if h3 and a:
+                label = h3.get_text(strip=True)
+                value = a.get_text(strip=True)
+                if label in (“Collection”, “Color”, “Finish”):
+                    attrs[label] = value
+
+    # Price — try common Shopify price selectors
+    if not attrs.get(“Price”):
+        for sel in (“.price”, “[data-product-price]”, “.product-price”, “.price__current”):
+            el = soup.select_one(sel)
+            if el:
+                price_text = el.get_text(strip=True)
+                # strip currency symbols, keep digits and decimal
+                price_clean = re.sub(r”[^\d.]”, “”, price_text.split(“–“)[0].split(“-”)[0])
+                if price_clean:
+                    attrs[“Price”] = price_clean
+                    break
+
+    return attrs
+
+
 def fetch_detail(url: str) -> dict[str, str]:
-    """Fetch product detail page and extract dimensions."""
+    “””Fetch product detail page and extract dimensions + page attributes.”””
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
-        return extract_dimensions(resp.text)
+        data = extract_dimensions(resp.text)
+        data.update(extract_page_attrs(resp.text))
+        return data
     except Exception as e:
-        print(f"    [WARN] fetch_detail failed ({url}): {e}")
+        print(f”    [WARN] fetch_detail failed ({url}): {e}”)
         return {}
 
 

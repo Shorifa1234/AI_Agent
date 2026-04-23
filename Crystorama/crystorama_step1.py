@@ -124,11 +124,15 @@ def fetch_collection(category_name: str, slug: str) -> list[dict]:
                     image_url = img0
 
             # From tags
-            width  = _tag_value(tags, "WIDTH")
-            finishes = _all_tag_values(tags, "FINISH")
-            finish   = " | ".join(finishes)
-            style    = _tag_value(tags, "STYLE")
-            family   = _tag_value(tags, "FAMILY")
+            width      = _tag_value(tags, "WIDTH")
+            finishes   = _all_tag_values(tags, "FINISH")
+            finish     = " | ".join(finishes)
+            style      = _tag_value(tags, "STYLE")
+            family     = _tag_value(tags, "FAMILY")
+            collection = _tag_value(tags, "COLLECTION")
+
+            # Price from first variant
+            price = variants[0].get("price", "") if variants else ""
 
             all_products.append({
                 "Category":      category_name,
@@ -144,8 +148,10 @@ def fetch_collection(category_name: str, slug: str) -> list[dict]:
                 "Width":         width,
                 "Finish":        finish,
                 "Style":         style,
+                "Collection":    collection,
                 "Product Type":  p.get("product_type", ""),
                 "Family":        family,
+                "Price":         price,
                 "Tags":          ", ".join(tags),
             })
 
