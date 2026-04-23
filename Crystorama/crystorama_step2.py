@@ -1,5 +1,5 @@
 # crystorama_step2.py
-# Crystorama Step 2 — Detail page scraper + final Excel output
+# Crystorama Step 2 -- Detail page scraper + final Excel output
 # Reads crystorama_step1.xlsx, visits each product page to get dimensions,
 # then saves Crystorama.xlsx in Julian Chichester format (one sheet per category).
 #
@@ -15,9 +15,9 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from bs4 import BeautifulSoup
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # CONFIG
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 INPUT_FILE   = "crystorama_step1.xlsx"
 OUTPUT_FILE  = "Crystorama.xlsx"
 VENDOR_NAME  = "Crystorama"
@@ -46,18 +46,15 @@ OUTPUT_COLS = [
     "Price",
     "All SKUs",
 ]
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 
-def extract_dimensions(html: str) -> dict[str, str]:
-    “””
-    Parse dimension fields from product detail page HTML.
-    Looks for patterns like  'Width: 13.75”'  or  'Height: 9.25”'
-    “””
-    dims: dict[str, str] = {}
+def extract_dimensions(html: str) -> dict:
+    # Match patterns like:  Width: 13.75"  or  Height: 9.25"
+    dims = {}
     for field in DIM_FIELDS:
         m = re.search(
-            rf'{field}\s*:\s*([\d.]+)\s*[“””″′\']',
+            rf'{field}\s*:\s*([\d.]+)\s*[\x22\x27″′]',
             html, re.I
         )
         if m:
@@ -65,44 +62,38 @@ def extract_dimensions(html: str) -> dict[str, str]:
     return dims
 
 
-def extract_page_attrs(html: str) -> dict[str, str]:
-    “””
-    Extract Collection, Color (and override Finish) from product detail page.
-    Looks for <h3>Label</h3><a>Value</a> pairs in .product-overview-attrs,
-    and also the price from .price or [data-product-price].
-    “””
-    attrs: dict[str, str] = {}
-    soup = BeautifulSoup(html, “html.parser”)
+def extract_page_attrs(html: str) -> dict:
+    # Extract Collection, Color, Finish from .product-overview-attrs section
+    # and Price from common Shopify price selectors
+    attrs = {}
+    soup = BeautifulSoup(html, "html.parser")
 
-    # Attribute pairs: Collection, Finish, Color, etc.
-    attr_container = soup.find(class_=”product-overview-attrs”)
+    attr_container = soup.find(class_="product-overview-attrs")
     if attr_container:
-        for col in attr_container.find_all(“div”, recursive=False):
-            h3 = col.find(“h3”)
-            a  = col.find(“a”)
+        for col in attr_container.find_all("div", recursive=False):
+            h3 = col.find("h3")
+            a  = col.find("a")
             if h3 and a:
                 label = h3.get_text(strip=True)
                 value = a.get_text(strip=True)
-                if label in (“Collection”, “Color”, “Finish”):
+                if label in ("Collection", "Color", "Finish"):
                     attrs[label] = value
 
-    # Price — try common Shopify price selectors
-    if not attrs.get(“Price”):
-        for sel in (“.price”, “[data-product-price]”, “.product-price”, “.price__current”):
+    if not attrs.get("Price"):
+        for sel in (".price", "[data-product-price]", ".product-price", ".price__current"):
             el = soup.select_one(sel)
             if el:
-                price_text = el.get_text(strip=True)
-                # strip currency symbols, keep digits and decimal
-                price_clean = re.sub(r”[^\d.]”, “”, price_text.split(“–“)[0].split(“-”)[0])
-                if price_clean:
-                    attrs[“Price”] = price_clean
+                raw = el.get_text(strip=True).split("–")[0].split("-")[0]
+                clean = re.sub(r"[^\d.]", "", raw)
+                if clean:
+                    attrs["Price"] = clean
                     break
 
     return attrs
 
 
-def fetch_detail(url: str) -> dict[str, str]:
-    “””Fetch product detail page and extract dimensions + page attributes.”””
+def fetch_detail(url: str) -> dict:
+    # Fetch a product page and return dimensions + page attributes
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
@@ -110,12 +101,11 @@ def fetch_detail(url: str) -> dict[str, str]:
         data.update(extract_page_attrs(resp.text))
         return data
     except Exception as e:
-        print(f”    [WARN] fetch_detail failed ({url}): {e}”)
+        print(f"    [WARN] fetch_detail failed ({url}): {e}")
         return {}
 
 
-def load_step1(filepath: str) -> list[dict]:
-    """Load step1 Excel into list of dicts."""
+def load_step1(filepath: str) -> list:
     if not os.path.exists(filepath):
         raise FileNotFoundError(
             f"Step 1 file not found: '{filepath}'\n"
@@ -127,14 +117,13 @@ def load_step1(filepath: str) -> list[dict]:
     rows = []
     for r in range(2, ws.max_row + 1):
         row = {headers[c]: ws.cell(r, c + 1).value for c in range(len(headers))}
-        if any(v for v in row.values()):   # skip totally empty rows
+        if any(v for v in row.values()):
             rows.append(row)
     wb.close()
     return rows
 
 
 def _generate_sku(category: str, index: int) -> str:
-    """CRYXX01 fallback SKU if product has no SKU."""
     words = re.sub(r"[^A-Za-z\s]", "", category).strip().split()
     if len(words) >= 2:
         c = (words[0][0] + words[1][0]).upper()
@@ -145,12 +134,11 @@ def _generate_sku(category: str, index: int) -> str:
     return f"CRY{c}{index:02d}"
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # Save helpers
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
-def _write_excel(enriched_by_cat: dict[str, list[dict]], out_path: str) -> None:
-    """Write final Excel file with one sheet per category (always fresh)."""
+def _write_excel(enriched_by_cat: dict, out_path: str) -> None:
     wb = openpyxl.Workbook()
     for name in list(wb.sheetnames):
         del wb[name]
@@ -163,19 +151,14 @@ def _write_excel(enriched_by_cat: dict[str, list[dict]], out_path: str) -> None:
             del wb[sheet_name]
         ws = wb.create_sheet(sheet_name)
 
-        # Row 1: Brand
         ws.cell(1, 1, "Brand").font = bold
         ws.cell(1, 2, VENDOR_NAME)
 
-        # Row 2: Category Link  (use first product's URL base)
         cat_slug = products[0].get("Category Slug", "") if products else ""
         cat_url  = f"https://www.crystorama.com/collections/{cat_slug}" if cat_slug else ""
         ws.cell(2, 1, "Category Link").font = bold
         ws.cell(2, 2, cat_url)
 
-        # Row 3: empty
-
-        # Collect extra cols not in OUTPUT_COLS
         extra_cols = []
         for p in products:
             for k in p:
@@ -183,11 +166,9 @@ def _write_excel(enriched_by_cat: dict[str, list[dict]], out_path: str) -> None:
                     extra_cols.append(k)
         all_cols = OUTPUT_COLS + extra_cols
 
-        # Row 4: Headers
         for col, header in enumerate(all_cols, 1):
             ws.cell(4, col, header).font = bold
 
-        # Rows 5+: Data
         for idx, prod in enumerate(products, 1):
             prod["Index"]            = idx
             prod["Manufacturer"]     = VENDOR_NAME
@@ -195,13 +176,12 @@ def _write_excel(enriched_by_cat: dict[str, list[dict]], out_path: str) -> None:
             prod["Source"]           = prod.get("Product URL", "")
             if not prod.get("SKU"):
                 prod["SKU"]          = _generate_sku(category, idx)
-            prod.setdefault("Base SKU",         prod.get("Base SKU", ""))
+            prod.setdefault("Base SKU",          prod.get("Base SKU", ""))
             prod.setdefault("Product Family Id", prod.get("Product Name", ""))
 
             for col, key in enumerate(all_cols, 1):
                 ws.cell(4 + idx, col, prod.get(key, ""))
 
-        # Auto-width
         for col_cells in ws.columns:
             max_len = max((len(str(c.value or "")) for c in col_cells), default=10)
             ws.column_dimensions[
@@ -213,7 +193,7 @@ def _write_excel(enriched_by_cat: dict[str, list[dict]], out_path: str) -> None:
     wb.save(out_path)
 
 
-def save_progress(enriched_by_cat: dict[str, list[dict]]) -> None:
+def save_progress(enriched_by_cat: dict) -> None:
     tmp = OUTPUT_FILE.replace(".xlsx", "_tmp.xlsx")
     _write_excel(enriched_by_cat, tmp)
     try:
@@ -225,23 +205,21 @@ def save_progress(enriched_by_cat: dict[str, list[dict]]) -> None:
         if os.path.exists(alt):
             os.remove(alt)
         os.rename(tmp, alt)
-        print(f"  [WARN] '{OUTPUT_FILE}' is open in Excel — saved to '{alt}' instead")
+        print(f"  [WARN] '{OUTPUT_FILE}' is open in Excel -- saved to '{alt}' instead")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # Resume helper
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
-def load_done_urls(out_path: str) -> set[str]:
-    """Read already-completed product URLs from existing output file."""
-    done: set[str] = set()
+def load_done_urls(out_path: str) -> set:
+    done = set()
     if not os.path.exists(out_path):
         return done
     try:
         wb = openpyxl.load_workbook(out_path, read_only=True)
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
-            # find the "Source" column index in row 4
             src_col = None
             for c in range(1, ws.max_column + 1):
                 if ws.cell(4, c).value == "Source":
@@ -259,13 +237,13 @@ def load_done_urls(out_path: str) -> set[str]:
     return done
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # MAIN
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 def main() -> None:
     print("=" * 60)
-    print("Crystorama Step 2 — Detail Scraper")
+    print("Crystorama Step 2 -- Detail Scraper")
     print(f"Input : {INPUT_FILE}")
     print(f"Output: {OUTPUT_FILE}")
     print("=" * 60)
@@ -273,14 +251,12 @@ def main() -> None:
     rows = load_step1(INPUT_FILE)
     print(f"Loaded {len(rows)} products from {INPUT_FILE}")
 
-    # Resume: find already-done URLs
     done_urls = load_done_urls(OUTPUT_FILE)
     if done_urls:
-        print(f"Resume: {len(done_urls)} products already in output — skipping them")
+        print(f"Resume: {len(done_urls)} products already in output -- skipping them")
 
-    # Group by category (preserving order)
-    categories_order: list[str] = []
-    by_category: dict[str, list[dict]] = {}
+    categories_order = []
+    by_category = {}
     for row in rows:
         cat = row.get("Category", "Unknown")
         if cat not in by_category:
@@ -290,17 +266,16 @@ def main() -> None:
 
     print(f"Categories: {len(categories_order)}")
 
-    # Enrich rows with detail-page dimensions
-    enriched_by_cat: dict[str, list[dict]] = {cat: [] for cat in categories_order}
+    enriched_by_cat = {cat: [] for cat in categories_order}
     processed = 0
     skipped   = 0
     total     = len(rows)
 
     for cat in categories_order:
-        print(f"\n[{cat}] — {len(by_category[cat])} products")
+        print(f"\n[{cat}] -- {len(by_category[cat])} products")
 
         for row in by_category[cat]:
-            url = row.get("Product URL", "")
+            url  = row.get("Product URL", "")
             name = row.get("Product Name", url)
 
             if url in done_urls:
@@ -315,21 +290,19 @@ def main() -> None:
 
             enriched_by_cat[cat].append(row)
 
-            # Auto-save every N products
             if processed % SAVE_EVERY_N == 0:
                 save_progress(enriched_by_cat)
                 print(f"  [auto-save] {processed} products written to {OUTPUT_FILE}")
 
             time.sleep(DELAY_SEC)
 
-    # Final save
     save_progress(enriched_by_cat)
 
     total_saved = sum(len(v) for v in enriched_by_cat.values())
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Done! {total_saved} products saved to {OUTPUT_FILE}")
     print(f"Sheets: {', '.join(categories_order)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
