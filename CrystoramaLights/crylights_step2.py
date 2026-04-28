@@ -6,6 +6,7 @@
 # deps: pip install requests openpyxl beautifulsoup4
 
 from __future__ import annotations
+import json
 import os
 import re
 import time
@@ -37,13 +38,74 @@ OUTPUT_COLS = [
     "Index", "Category", "Manufacturer", "Source", "Image URL",
     "Product Name", "SKU", "Base SKU", "Product Family Id",
     "Description",
-    "Width", "Depth", "Height", "Diameter", "Extension", "Canopy",
+    "Width", "Height", "Depth", "Length", "Diameter",
+    "Extension", "Maximum Adjustable Height", "Canopy", "Weight",
     "Finish", "Collection", "Color", "Style", "Product Type",
-    "Total Bulbs", "Wattage", "Dimmable",
-    "Price",
+    "Material", "Shape", "Glass Features",
+    "Total Bulbs", "Wattage", "Dimmable", "Lamping Type", "Socket", "Voltage",
+    "UPC", "Shipping Method",
+    "Country of Origin", "Install Position",
+    "Prop 65", "Title 20", "UL Ratings", "Warranty",
+    "Price", "Availability",
     "All SKUs",
 ]
 # ------------------------------------------------------------------------------
+
+
+_SPEC_KEY_MAP = {
+    "Shipping Method":            "Shipping Method",
+    "UPC":                        "UPC",
+    "Lamping Type":               "Lamping Type",
+    "Lamping Features":           "Lamping Type",
+    "Socket":                     "Socket",
+    "Glass Features":             "Glass Features",
+    "Material":                   "Material",
+    "Shape":                      "Shape",
+    "Extension":                  "Extension",
+    "Height":                     "Height",
+    "Width":                      "Width",
+    "Length":                     "Length",
+    "Depth":                      "Depth",
+    "Diameter":                   "Diameter",
+    "Maximum Adjustable Height":  "Maximum Adjustable Height",
+    "Weight":                     "Weight",
+    "Country of Origin":          "Country of Origin",
+    "Install Position":           "Install Position",
+    "Prop 65":                    "Prop 65",
+    "Title 20":                   "Title 20",
+    "UL Ratings":                 "UL Ratings",
+    "Warranty":                   "Warranty",
+    "Voltage":                    "Voltage",
+    "Number of Lights":           "Total Bulbs",
+    "Wattage":                    "Wattage",
+    "Dimmable":                   "Dimmable",
+    "Finish":                     "Finish",
+    "Collection":                 "Collection",
+    "Style":                      "Style",
+    "Canopy Width":               "Canopy",
+    "Backplate/Canopy Width":     "Canopy",
+    "Backplate/Canopy Extension": "Extension",
+}
+
+
+def _parse_spec_pairs(soup: BeautifulSoup) -> dict:
+    """Parse each .spec-item element into {label: value}."""
+    pairs = {}
+    for si in soup.select(".spec-item"):
+        label_el = si.select_one(".spec-label, .label, dt")
+        value_el = si.select_one(".spec-value, .value, dd")
+        if label_el and value_el:
+            key = label_el.get_text(strip=True).rstrip(":")
+            val = value_el.get_text(" ", strip=True)
+        else:
+            text = si.get_text(" ", strip=True)
+            m = re.match(r"^([^:]+?):\s*(.+)$", text, re.S)
+            if not m:
+                continue
+            key, val = m.group(1).strip(), m.group(2).strip()
+        if key and val:
+            pairs[key] = val
+    return pairs
 
 
 def _base_sku(sku: str) -> str:
@@ -57,21 +119,55 @@ def extract_detail(html: str) -> dict:
     data = {}
     soup = BeautifulSoup(html, "html.parser")
 
-    # SKU
-    sku_el = soup.select_one("[class*=sku]")
-    if sku_el:
-        m = re.search(r"SKU:\s*(\S+)", sku_el.get_text(strip=True))
-        if m:
-            data["SKU"] = m.group(1)
+    # --- 1. JSON-LD (SKU, name, description, image, price, availability) ---
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            ld = json.loads(script.string or "")
+            if ld.get("@type") == "Product":
+                data["SKU"]          = ld.get("sku") or ld.get("mpn", "")
+                data["Product Name"] = ld.get("name", "")
+                data["Description"]  = ld.get("description", "")
+                imgs = ld.get("image", [])
+                if isinstance(imgs, list) and imgs:
+                    data["Image URL"] = imgs[0].split("?")[0]
+                elif isinstance(imgs, str) and imgs:
+                    data["Image URL"] = imgs.split("?")[0]
+                offers = ld.get("offers", {})
+                if offers:
+                    data["Price"] = str(offers.get("price", ""))
+                    avail = offers.get("availability", "")
+                    if "OutOfStock" in avail:
+                        data["Availability"] = "Out of Stock"
+                    elif "InStock" in avail:
+                        data["Availability"] = "In Stock"
+                data.setdefault("Product Type", ld.get("category", ""))
+                break
+        except Exception:
+            pass
 
-    # Description (from .product-overview, strip h3 header text)
-    desc_el = soup.select_one(".product-overview")
-    if desc_el:
-        for h in desc_el.find_all("h3"):
-            h.decompose()
-        data["Description"] = desc_el.get_text(" ", strip=True)
+    # --- 2. og:image fallback ---
+    if not data.get("Image URL"):
+        og_img = soup.select_one('meta[property="og:image"]')
+        if og_img:
+            data["Image URL"] = og_img.get("content", "").split("?")[0]
 
-    # Collection, Color, Product Type from .product-overview-attrs
+    # --- 3. SKU fallback ---
+    if not data.get("SKU"):
+        sku_el = soup.select_one("[class*=sku]")
+        if sku_el:
+            m = re.search(r"SKU:\s*(\S+)", sku_el.get_text(strip=True))
+            if m:
+                data["SKU"] = m.group(1)
+
+    # --- 4. Description fallback ---
+    if not data.get("Description"):
+        desc_el = soup.select_one(".product-overview")
+        if desc_el:
+            for h in desc_el.find_all("h3"):
+                h.decompose()
+            data["Description"] = desc_el.get_text(" ", strip=True)
+
+    # --- 5. Collection / Color / Finish / Style from .product-overview-attrs ---
     attrs_div = soup.select_one(".product-overview-attrs")
     if attrs_div:
         for col_div in attrs_div.select("div"):
@@ -80,72 +176,84 @@ def extract_detail(html: str) -> dict:
             if h3 and a:
                 label = h3.get_text(strip=True)
                 value = a.get_text(strip=True)
-                if label == "Collection":
-                    data["Collection"] = value
-                elif label == "Color":
-                    data["Color"] = value
-                elif label == "Category":
-                    data["Product Type"] = value
+                label_map = {
+                    "Collection": "Collection", "Finish": "Finish",
+                    "Color": "Color", "Style": "Style", "Category": "Product Type",
+                }
+                if label in label_map:
+                    data.setdefault(label_map[label], value)
 
-    # Dimensions from .spec-item elements
-    spec_items = soup.select(".spec-item")
-    spec_text  = " ".join(si.get_text(" ", strip=True) for si in spec_items)
+    # --- 6. All spec-item key:value pairs ---
+    spec_pairs = _parse_spec_pairs(soup)
+    for page_key, out_col in _SPEC_KEY_MAP.items():
+        if out_col not in data and page_key in spec_pairs:
+            data[out_col] = spec_pairs[page_key]
 
-    # Map: regex pattern on page -> output column (more specific first)
-    dim_map = [
-        (r"Backplate[/\\]Canopy\s+Width",     "Canopy"),
-        (r"Maximum\s+Adjustable\s+Height",    "Extension"),
-        (r"Backplate[/\\]Canopy\s+Extension", "Canopy"),
-        (r"Width",                             "Width"),
-        (r"Height",                            "Height"),
-        (r"Length",                            "Depth"),
-        (r"Depth",                             "Depth"),
-        (r"Diameter",                          "Diameter"),
-        (r"Extension",                         "Extension"),
-    ]
-    for pattern, col in dim_map:
-        if col in data:
-            continue
-        m = re.search(rf"{pattern}\s*:\s*([\d.]+)", spec_text, re.I)
+    # "Lamping Features: 3 light" -> Total Bulbs
+    if "Total Bulbs" not in data:
+        for key, val in spec_pairs.items():
+            if re.search(r"lamping\s+features", key, re.I):
+                m = re.search(r"(\d+)\s+light", val, re.I)
+                if m:
+                    data["Total Bulbs"] = m.group(1)
+                break
+
+    # Drop meaningless "0 light" lamping entries (mirrors etc.)
+    for f in ("Lamping Type", "Total Bulbs"):
+        val = str(data.get(f, ""))
+        if re.match(r"^0\b", val.strip()):
+            data.pop(f, None)
+
+    # Ensure Wattage has "W" suffix
+    if data.get("Wattage"):
+        raw = str(data["Wattage"])
+        if not raw.upper().endswith("W"):
+            data["Wattage"] = re.sub(r"[^\d.]", "", raw) + "W"
+
+    # --- 7. Parse "Dimensions: 7.5"W x 22.25"H x 7.5"D" as fallback ---
+    dims_raw = spec_pairs.get("Dimensions", "")
+    if dims_raw:
+        m = re.search(
+            r'([\d.]+)["\s]*W\s*[xX×]\s*([\d.]+)["\s]*H(?:\s*[xX×]\s*([\d.]+)["\s]*D)?',
+            dims_raw, re.I,
+        )
         if m:
-            data[col] = m.group(1)
+            data.setdefault("Width",  m.group(1))
+            data.setdefault("Height", m.group(2))
+            if m.group(3):
+                data.setdefault("Depth", m.group(3))
 
-    # Also try the "Dimensions: 28.25W x 30H x 28.25D" format
-    m = re.search(r"Dimensions\s*:\s*([\d.]+)[^\d]", spec_text, re.I)
-    if m and "Width" not in data:
-        data["Width"] = m.group(1)
+    # --- 8. Fallback: regex on concatenated spec text ---
+    spec_text = " ".join(si.get_text(" ", strip=True) for si in soup.select(".spec-item"))
+    if not spec_text:
+        specs_el  = soup.select_one(".product-specifications")
+        spec_text = specs_el.get_text(" ", strip=True) if specs_el else ""
 
-    # Product specifications section (for Finish, Wattage, Bulbs, Dimmable)
-    specs_el = soup.select_one(".product-specifications")
-    specs_text = specs_el.get_text(" ", strip=True) if specs_el else ""
+    if not data.get("Finish"):
+        m = re.search(r"Finish\s*:\s*([A-Za-z /&,\-]+?)(?:\s+[A-Z][a-z]+\s*:|$)", spec_text, re.I)
+        if m:
+            data["Finish"] = m.group(1).strip().rstrip(",")
 
-    m = re.search(r"Finish\s*:\s*([A-Za-z /&,\-]+?)(?:\s+[A-Z][a-z]+\s*:|$)", specs_text, re.I)
-    if m:
-        data["Finish"] = m.group(1).strip().rstrip(",")
+    if not data.get("Total Bulbs"):
+        m = re.search(r"Lamping\s+Features\s*:\s*(\d+)\s+light", spec_text, re.I)
+        if m:
+            data["Total Bulbs"] = m.group(1)
 
-    m = re.search(r"Lamping\s+Features\s*:\s*(\d+)\s+light", specs_text, re.I)
-    if m:
-        data["Total Bulbs"] = m.group(1)
+    if not data.get("Wattage"):
+        m = re.search(r"(\d+)[-\s]*watt", spec_text, re.I)
+        if m:
+            data["Wattage"] = m.group(1) + "W"
 
-    m = re.search(r"(\d+)[-\s]*watt", specs_text, re.I)
-    if m:
-        data["Wattage"] = m.group(1) + "W"
+    if not data.get("Dimmable"):
+        m = re.search(r"Dimmable\s*:\s*(Yes|No)", spec_text, re.I)
+        if m:
+            data["Dimmable"] = m.group(1)
 
-    m = re.search(r"Dimmable\s*:\s*(Yes|No)", specs_text, re.I)
-    if m:
-        data["Dimmable"] = m.group(1)
-
-    # Price
-    price_el = soup.select_one(".price .value")
-    if price_el:
-        data["Price"] = price_el.get("content", "") or re.sub(r"[^\d.]", "", price_el.get_text(strip=True))
-
-    # Image (larger version from product page if available)
-    img = soup.select_one("img.primary-image, .product-image img, img[itemprop='image']")
-    if img:
-        src = img.get("src", "")
-        if src:
-            data["Image URL"] = src.split("?")[0]
+    # --- 9. Price fallback from DOM ---
+    if not data.get("Price"):
+        price_el = soup.select_one(".price .value")
+        if price_el:
+            data["Price"] = price_el.get("content", "") or re.sub(r"[^\d.]", "", price_el.get_text(strip=True))
 
     return data
 
@@ -276,6 +384,35 @@ def load_done_urls(out_path: str) -> set:
     return done
 
 
+def load_existing_output(out_path: str, categories: list) -> dict:
+    """Load previously scraped products from output Excel into enriched_by_cat."""
+    result = {cat: [] for cat in categories}
+    if not os.path.exists(out_path):
+        return result
+    try:
+        wb = openpyxl.load_workbook(out_path, read_only=True, data_only=True)
+        cat_by_sheet = {cat[:31]: cat for cat in categories}
+        for sheet_name in wb.sheetnames:
+            if sheet_name not in cat_by_sheet:
+                continue
+            cat = cat_by_sheet[sheet_name]
+            ws = wb[sheet_name]
+            all_rows = list(ws.rows)
+            if len(all_rows) < 5:
+                continue
+            headers = [cell.value for cell in all_rows[3]]  # row 4
+            for row_cells in all_rows[4:]:                  # row 5+
+                row = {h: cell.value for h, cell in zip(headers, row_cells) if h}
+                if any(v for v in row.values()):
+                    if row.get("Source") and not row.get("Product URL"):
+                        row["Product URL"] = row["Source"]
+                    result[cat].append(row)
+        wb.close()
+    except Exception as e:
+        print(f"  [WARN] load_existing_output: {e}")
+    return result
+
+
 def main() -> None:
     print("=" * 60)
     print("CrystoramaLights Step 2 -- Detail Scraper")
@@ -301,7 +438,10 @@ def main() -> None:
 
     print(f"Categories: {len(categories_order)}")
 
-    enriched_by_cat = {cat: [] for cat in categories_order}
+    enriched_by_cat = load_existing_output(OUTPUT_FILE, categories_order)
+    existing_count = sum(len(v) for v in enriched_by_cat.values())
+    if existing_count:
+        print(f"Loaded {existing_count} previously scraped products from {OUTPUT_FILE}")
     processed = 0
     skipped   = 0
     total     = len(rows)

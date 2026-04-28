@@ -4,8 +4,8 @@
 
 # Python cache
 __pycache__/
-*.py[cod]
-*.pyc
+
+
 
 # Selenium / debug
 *_screenshot.png
@@ -20,6 +20,10 @@ downloads_temp/
 # Temp save files
 *_tmp.xlsx
 *_saved.xlsx
+
+# Log / test output files
+*.txt
+*.log
 
 # Environment
 .env

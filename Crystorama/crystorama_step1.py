@@ -45,7 +45,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-DELAY_SEC = 0.3   # polite delay between API calls
+DELAY_SEC = 0.6   # polite delay between API calls
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -197,21 +197,49 @@ def save_to_excel(all_rows: list[dict]) -> None:
     print(f"\nSaved {len(all_rows)} products to {OUTPUT_FILE}")
 
 
+def _fmt_duration(seconds: float) -> str:
+    if seconds >= 3600:
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        return f"{h}h {m}m"
+    if seconds >= 60:
+        m = int(seconds // 60)
+        s = int(seconds % 60)
+        return f"{m}m {s}s"
+    return f"{seconds:.1f}s"
+
+
 def main() -> None:
     print("=" * 60)
     print("Crystorama Step 1 — Product List Collection")
     print("=" * 60)
 
     all_rows: list[dict] = []
+    script_start = time.time()
+    category_times: list[tuple[str, int, float]] = []
 
-    for category_name, slug in CATEGORIES:
-        print(f"\n[{category_name}] /collections/{slug}")
+    for i, (category_name, slug) in enumerate(CATEGORIES, 1):
+        cat_start = time.time()
+        print(f"\n[{i}/{len(CATEGORIES)}] {category_name} /collections/{slug}")
         rows = fetch_collection(category_name, slug)
         all_rows.extend(rows)
-        print(f"  -> {len(rows)} products")
+        cat_elapsed = time.time() - cat_start
+        category_times.append((category_name, len(rows), cat_elapsed))
+        print(f"  -> {len(rows)} products  |  Time: {_fmt_duration(cat_elapsed)}")
         time.sleep(DELAY_SEC)
 
-    print(f"\nTotal: {len(all_rows)} products across {len(CATEGORIES)} categories")
+    total_elapsed = time.time() - script_start
+
+    print("\n" + "=" * 60)
+    print("Category Summary")
+    print("=" * 60)
+    for cat_name, count, elapsed in category_times:
+        print(f"  {cat_name:<22} {count:>4} products   {_fmt_duration(elapsed):>8}")
+    print("-" * 60)
+    print(f"  Total: {len(all_rows)} products across {len(CATEGORIES)} categories")
+    print(f"  Total Time: {_fmt_duration(total_elapsed)}")
+    print("=" * 60)
+
     save_to_excel(all_rows)
 
 
