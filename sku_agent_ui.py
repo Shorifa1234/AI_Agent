@@ -85,6 +85,14 @@ VENDORS = {
             "step2": {"script": "Gabby/gabby_step2.py", "dir": "Gabby"},
         },
     },
+    "worldsaway": {
+        "name": "Worlds Away",
+        "keywords": ["worlds away", "worldsaway"],
+        "steps": {
+            "step1": {"script": "WorldsAway/worldsaway_step1.py", "dir": "WorldsAway"},
+            "step2": {"script": "WorldsAway/worldsaway_step2.py", "dir": "WorldsAway"},
+        },
+    },
 }
 
 STEP_LABELS = {

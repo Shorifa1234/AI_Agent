@@ -39,12 +39,19 @@ DIM_FIELDS = ["Width", "Height", "Depth", "Diameter", "Extension", "Canopy"]
 # Output columns in Julian Chichester format
 OUTPUT_COLS = [
     "Index", "Category", "Manufacturer", "Source", "Image URL",
-    "Product Name", "SKU", "Base SKU", "Product Family Id",
-    "Description",
-    "Width", "Depth", "Height", "Diameter", "Extension", "Canopy",
-    "Finish", "Collection", "Color", "Style", "Product Type",
-    "Total Bulbs", "Wattage", "Dimmable",
-    "Price",
+    "Product Name", "SKU", "Base SKU", "Product Family Id", "Description",
+    "Width", "Depth", "Height", "Diameter", "Length", "Weight",
+    "Extension", "Canopy", "Maximum Adjustable Height",
+    "Outside Length", "Outside Depth", "Outside Height",
+    "Inside Length", "Inside Depth", "Inside Height", "Seat Height", "Arm Height",
+    "Finish", "Finish Sample Code", "Color", "Collection",
+    "Materials", "Material", "Origin", "Country of Origin",
+    "Body Fabric", "Welt Fabric",
+    "Price", "List Price", "Availability", "Shipping", "Shipping Method",
+    "Style", "Product Type", "Features", "Tags",
+    "Total Bulbs", "Wattage", "Dimmable", "Lamping Type",
+    "Socket", "Voltage", "Shape", "Glass Features",
+    "Install Position", "UL Ratings", "Prop 65", "Title 20", "Warranty", "UPC",
     "All SKUs",
 ]
 # ------------------------------------------------------------------------------
