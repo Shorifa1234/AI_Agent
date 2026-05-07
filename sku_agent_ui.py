@@ -93,6 +93,14 @@ VENDORS = {
             "step2": {"script": "WorldsAway/worldsaway_step2.py", "dir": "WorldsAway"},
         },
     },
+    "sherrill": {
+        "name": "Sherrill",
+        "keywords": ["sherrill"],
+        "steps": {
+            "step1": {"script": "Sherrill/sherrill_step1.py", "dir": "Sherrill"},
+            "step2": {"script": "Sherrill/sherrill_step2.py", "dir": "Sherrill"},
+        },
+    },
 }
 
 STEP_LABELS = {

@@ -232,6 +232,7 @@ Main sheet column layout:
 | CrystoramaLights | step1 + step2 | ✅ Complete | JSON-LD, 2259 products, 6 sheets |
 | Blackman Cruz | step1 + step2 | ✅ Complete | Shopify JSON API, multi-category |
 | Gabby | step1 + step2 | ✅ Complete | Shopify JSON API, 26 categories |
+| FDB Mobler | step1 + step2 | ✅ Complete | Shopify JSON-LD, 366 products, 23 categories |
 
 ---
 
